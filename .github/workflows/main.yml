@@ -1,54 +1,123 @@
-name: Playwright and Java Tests
+name: Copy Changed Files to Destination
 
 on:
-  push:
-    branches:
-      - main  # or your preferred branch
   pull_request:
     branches:
-      - main
+      - pulltest
+    types:
+      - closed
+  push:
+    branches:
+      - pulltest
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  sync_files:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/pulltest') || 
+        (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'pulltest' && github.event.pull_request.head.ref == 'test')
+    runs-on: [self-hosted, windows]
+    defaults:
+      run:
+        shell: powershell
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3  # Ensure you are using the latest v3
-
-      # Step 1: Set up Java
-      - name: Set up Java
-        uses: actions/setup-java@v3  # Ensure you're using the latest v3
+      - name: Checkout pulltest branch
+        uses: actions/checkout@v4
         with:
-          distribution: 'temurin'  # Use Eclipse Temurin distribution (formerly AdoptOpenJDK)
-          java-version: '17'  # Specify the Java version (e.g., 17 for modern LTS)
+          ref: pulltest
+          fetch-depth: 0
 
-      - name: Verify Java version
-        run: java -version  # Optional: Check installed Java version
+      - name: Verify Active Branch
+        run: |
+          $currentBranch = git branch --show-current
+          Write-Host "Currently on branch: $currentBranch"
+          if ($currentBranch -ne "pulltest") {
+              Write-Host "Error: Not on pulltest branch!"
+              exit 1
+          }
 
-      # Step 2: Set up Node.js after Java
-      - name: Set up Node.js
-        uses: actions/setup-node@v3  # Ensure you are using the latest v3
-        with:
-          node-version: '20.x'  # Specify Node.js version 20.x
+      - name: Get Changed Files
+        id: changed_files
+        run: |
+          # Get the changed files for push and merge scenarios
+          if ($env:GITHUB_EVENT_NAME -eq "push") {
+              $changedFiles = git diff --name-only --diff-filter=AM HEAD~1 HEAD
+          } else {
+              $changedFiles = git diff --name-only --diff-filter=AM $env:GITHUB_SHA $env:GITHUB_SHA~1
+          }
 
-      # Step 3: Install project dependencies and run Playwright tests
-      - name: Install dependencies
-        run: npm install
+          if (-Not $changedFiles) {
+              Write-Host "No changed files detected."
+              echo "files=[]" | Out-File -FilePath $env:GITHUB_ENV -Append
+              exit 0
+          }
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+          Write-Host "Changed Files:"
+          Write-Host $changedFiles
 
-      - name: Run Playwright Tests
-        run: npx playwright test --reporter=html
+          $changedFilesArray = $changedFiles -split "`r?`n" | Where-Object { $_ -ne "" } | ConvertTo-Json -Compress
 
-      # Step 4: List and upload the test report
-      - name: List report directory
-        run: ls -R playwright-report  # List all files recursively in the report directory
+          Write-Host "GitHub Actions Output: $changedFilesArray"
 
-      - name: Upload Playwright HTML Report
-        if: always()  # Upload the report regardless of test outcomes
-        uses: actions/upload-artifact@v4  # Updated to v4
-        with:
-          name: playwright-report
-          path: playwright-report  # Folder where Playwright stores the HTML report
+          echo "files=$changedFilesArray" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Copy Changed Files
+        run: |
+          $pathFile = "pathvariable.txt"
+          if (-Not (Test-Path -Path $pathFile)) {
+              Write-Host "Error: pathvariable.txt not found."
+              exit 1
+          }
+
+          $content = Get-Content $pathFile
+          $destinationPathLine = $content | Where-Object { $_ -like 'destination_path=*' }
+
+          if (-Not $destinationPathLine) {
+              Write-Host "Error: destination_path is not assigned in pathvariable.txt"
+              exit 1
+          }
+
+          $destinationPath = $destinationPathLine.Split('=')[1].Trim()
+
+          if ([string]::IsNullOrWhiteSpace($destinationPath)) {
+              Write-Host "Error: destination_path is empty in pathvariable.txt"
+              exit 1
+          }
+
+          Write-Host "Destination Path: $destinationPath"
+
+          $jsonString = "$env:files"
+
+          if ($jsonString -eq "[]") {
+              Write-Host "No changed files detected. Skipping copy."
+              exit 0
+          }
+
+          try {
+              $files = $jsonString | ConvertFrom-Json
+          } catch {
+              Write-Host "Error: Failed to parse JSON. Raw Output: $jsonString"
+              exit 1
+          }
+
+          $repoRoot = "$env:GITHUB_WORKSPACE"
+          Set-Location -Path $repoRoot
+
+          foreach ($file in $files) {
+              $file = $file -replace '/', '\'
+              $source = Join-Path -Path $repoRoot -ChildPath $file
+              $destination = Join-Path -Path $destinationPath -ChildPath $file
+
+              $destDir = Split-Path -Path $destination -Parent
+              if (-Not (Test-Path -Path $destDir)) {
+                  New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+              }
+
+              if (Test-Path -Path $source) {
+                  Copy-Item -Path $source -Destination $destination -Force
+                  Write-Host "Copied: $file"
+              } else {
+                  Write-Host "Warning: Source file does not exist -> $source"
+              }
+          }
+
+          Write-Host "File transfer completed successfully!"
