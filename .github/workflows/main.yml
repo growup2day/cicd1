@@ -6,14 +6,10 @@ on:
       - pulltest
     types:
       - closed
-  push:
-    branches:
-      - pulltest
 
 jobs:
   sync_files:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/pulltest') || 
-        (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'pulltest' && github.event.pull_request.head.ref == 'test')
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'pulltest' && github.event.pull_request.head.ref == 'test'
     runs-on: [self-hosted, windows]
     defaults:
       run:
@@ -23,7 +19,7 @@ jobs:
       - name: Checkout pulltest branch
         uses: actions/checkout@v4
         with:
-          ref: pulltest
+          ref: pulltest  # Ensure we check out the pulltest branch
           fetch-depth: 0
 
       - name: Verify Active Branch
@@ -38,12 +34,8 @@ jobs:
       - name: Get Changed Files
         id: changed_files
         run: |
-          # Get the changed files for push and merge scenarios
-          if ($env:GITHUB_EVENT_NAME -eq "push") {
-              $changedFiles = git diff --name-only --diff-filter=AM HEAD~1 HEAD
-          } else {
-              $changedFiles = git diff --name-only --diff-filter=AM $env:GITHUB_SHA $env:GITHUB_SHA~1
-          }
+          # Get the changed files (added/modified only)
+          $changedFiles = git diff --name-only --diff-filter=AM HEAD~1 HEAD
 
           if (-Not $changedFiles) {
               Write-Host "No changed files detected."
@@ -54,14 +46,17 @@ jobs:
           Write-Host "Changed Files:"
           Write-Host $changedFiles
 
-          $changedFilesArray = $changedFiles -split "`r?`n" | Where-Object { $_ -ne "" } | ConvertTo-Json -Compress
+          # Convert to JSON-safe format
+          $changedFilesArray = $changedFiles -split "r?n" | Where-Object { $_ -ne "" } | ConvertTo-Json -Compress
 
           Write-Host "GitHub Actions Output: $changedFilesArray"
 
+          # Store in GitHub Environment for later use
           echo "files=$changedFilesArray" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Copy Changed Files
         run: |
+          # Read destination path from pathvariable.txt
           $pathFile = "pathvariable.txt"
           if (-Not (Test-Path -Path $pathFile)) {
               Write-Host "Error: pathvariable.txt not found."
@@ -85,6 +80,7 @@ jobs:
 
           Write-Host "Destination Path: $destinationPath"
 
+          # Read the changed files from GitHub Environment
           $jsonString = "$env:files"
 
           if ($jsonString -eq "[]") {
@@ -92,6 +88,7 @@ jobs:
               exit 0
           }
 
+          # Parse JSON properly
           try {
               $files = $jsonString | ConvertFrom-Json
           } catch {
@@ -99,19 +96,23 @@ jobs:
               exit 1
           }
 
+          # Ensure correct working directory
           $repoRoot = "$env:GITHUB_WORKSPACE"
           Set-Location -Path $repoRoot
 
+          # Copy each changed file
           foreach ($file in $files) {
               $file = $file -replace '/', '\'
               $source = Join-Path -Path $repoRoot -ChildPath $file
               $destination = Join-Path -Path $destinationPath -ChildPath $file
 
+              # Ensure the destination folder exists
               $destDir = Split-Path -Path $destination -Parent
               if (-Not (Test-Path -Path $destDir)) {
                   New-Item -ItemType Directory -Path $destDir -Force | Out-Null
               }
 
+              # Copy the file
               if (Test-Path -Path $source) {
                   Copy-Item -Path $source -Destination $destination -Force
                   Write-Host "Copied: $file"
