@@ -1,25 +1,28 @@
-name: Select Runner and Create File
+name: Create Files on Specific Runners
 
 on:
   workflow_dispatch:
     inputs:
-      runner_label:
-        description: "Select the runner label"
+      target:
+        description: 'Choose the target runner'
         required: true
-        default: "EC2AMAZ-5BQ8D0F"
+        default: 'firstrunner'
         type: choice
         options:
-          - EC2AMAZ-5BQ8D0F
-          - EC2AMAZ-9UU0BV5
+          - firstrunner
+          - secondrunner
 
 jobs:
-  create-file:
-    runs-on: [self-hosted, ${{ inputs.runner_label }}]  # Dynamically assign runner
+  create-first-file:
+    if: ${{ github.event.inputs.target == 'firstrunner' }}
+    runs-on: [self-hosted, Windows, X64, test]
     steps:
-      - name: Create file based on runner
-        run: |
-          if [ "${{ inputs.runner_label }}" == "EC2AMAZ-5BQ8D0F" ]; then
-            echo "This file is created on EC2AMAZ-5BQ8D0F" > D:\runnerone.txt
-          else
-            echo "This file is created on EC2AMAZ-9UU0BV5" > D:\secondrunner.txt
-          fi
+      - name: Create first.txt on firstrunner
+        run: echo "This is first.txt" > first.txt
+
+  create-second-file:
+    if: ${{ github.event.inputs.target == 'secondrunner' }}
+    runs-on: [self-hosted, Windows, X64, dev]
+    steps:
+      - name: Create second.txt on secondrunner
+        run: echo "This is second.txt" > second.txt
