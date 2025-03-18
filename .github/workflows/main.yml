@@ -3,15 +3,16 @@ name: Deploy Changes to Selected VM
 on:
   workflow_dispatch:
     inputs:
-      target_vm:
-        description: "Select the target VM"
+      branch:
+        description: "Branch to deploy (main or dev)"
         required: true
+        default: "main"
         type: choice
-        options: [vm1, vm2]
+        options: [main, dev]
 
 jobs:
   deploy:
-    runs-on: [self-hosted, windows, ${{ inputs.target_vm }}]
+    runs-on: ${{ (inputs.branch == 'main') && 'vm1' || 'vm2' }}
     
     steps:
       - name: Set Working Directory
@@ -21,7 +22,8 @@ jobs:
 
       - name: Pull Latest Changes
         run: |
-          git pull origin main
+          git checkout ${{ inputs.branch }}
+          git pull origin ${{ inputs.branch }}
         shell: powershell
 
       - name: Find Differences and Create ZIP
