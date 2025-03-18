@@ -1,54 +1,62 @@
-name: Playwright and Java Tests
+name: Deploy Changes to Selected VM
 
 on:
-  push:
-    branches:
-      - main  # or your preferred branch
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      target_vm:
+        description: "Select the target VM"
+        required: true
+        type: choice
+        options:
+          - vm1
+          - vm2
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-
+  deploy:
+    runs-on: [self-hosted, windows, ${{ inputs.target_vm }}]
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3  # Ensure you are using the latest v3
+      - name: Set Working Directory
+        run: |
+          Set-Location -Path "D:\bancslink_cicd"
+        shell: powershell
 
-      # Step 1: Set up Java
-      - name: Set up Java
-        uses: actions/setup-java@v3  # Ensure you're using the latest v3
-        with:
-          distribution: 'temurin'  # Use Eclipse Temurin distribution (formerly AdoptOpenJDK)
-          java-version: '17'  # Specify the Java version (e.g., 17 for modern LTS)
+      - name: Pull Latest Changes
+        run: |
+          git pull origin main
+        shell: powershell
 
-      - name: Verify Java version
-        run: java -version  # Optional: Check installed Java version
+      - name: Find Differences and Create ZIP
+        run: |
+          $diffFiles = git diff --name-only HEAD~1
+          $zipPath = "D:\bancslink_cicd\latestdiff.zip"
+          
+          if ($diffFiles) {
+              $diffFiles | ForEach-Object {
+                  $destPath = "D:\temp_diff\" + $_
+                  New-Item -ItemType Directory -Path (Split-Path $destPath) -Force | Out-Null
+                  Copy-Item -Path "D:\bancslink_cicd\$_" -Destination $destPath -Force
+              }
+              Compress-Archive -Path "D:\temp_diff\*" -DestinationPath $zipPath -Force
+          } else {
+              Write-Output "No changes detected, skipping ZIP creation."
+          }
+        shell: powershell
 
-      # Step 2: Set up Node.js after Java
-      - name: Set up Node.js
-        uses: actions/setup-node@v3  # Ensure you are using the latest v3
-        with:
-          node-version: '20.x'  # Specify Node.js version 20.x
+      - name: Unzip to Target Location
+        run: |
+          $unzipPath = "D:\target_location"
+          Expand-Archive -Path "D:\bancslink_cicd\latestdiff.zip" -DestinationPath $unzipPath -Force
+        shell: powershell
 
-      # Step 3: Install project dependencies and run Playwright tests
-      - name: Install dependencies
-        run: npm install
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
-      - name: Run Playwright Tests
-        run: npx playwright test --reporter=html
-
-      # Step 4: List and upload the test report
-      - name: List report directory
-        run: ls -R playwright-report  # List all files recursively in the report directory
-
-      - name: Upload Playwright HTML Report
-        if: always()  # Upload the report regardless of test outcomes
-        uses: actions/upload-artifact@v4  # Updated to v4
-        with:
-          name: playwright-report
-          path: playwright-report  # Folder where Playwright stores the HTML report
+      - name: Force Copy Files to Target Directory
+        run: |
+          Get-ChildItem -Path "D:\target_location" -Recurse | ForEach-Object {
+              $targetFile = $_.FullName.Replace("D:\target_location", "D:\existing_target")
+              $targetDir = Split-Path $targetFile -Parent
+              if (!(Test-Path $targetDir)) {
+                  New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+              }
+              Copy-Item -Path $_.FullName -Destination $targetFile -Force
+          }
+        shell: powershell
