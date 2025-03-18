@@ -1,92 +1,17 @@
-name: Deploy Changes to Selected Runner
+name: Create Files on Specific Runners
 
 on:
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: "Select Branch to Deploy"
-        required: true
-        default: "main"
-        type: choice
-        options:
-          - main
-          - dev
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
 
 jobs:
-  deploy:
-    runs-on: ${{ github.event.inputs.branch == 'main' && 'EC2AMAZ-5BQ8D0F' || 'EC2AMAZ-9UU0BV5' }}
-
+  create-runnerone-file:
+    runs-on: [self-hosted, EC2AMAZ-5BQ8D0F]  # Runs on first machine
     steps:
-      - name: Print Selected Runner
-        run: echo "Running on runner: ${{ runner.name }}"
-        shell: pwsh
+      - name: Create runnerone.txt
+        run: echo "This file is created on EC2AMAZ-5BQ8D0F" > D:\runnerone.txt
 
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.branch }}
-          fetch-depth: 0
-
-      - name: Pull Latest Changes
-        run: |
-          cd /d D:\bancslink_cicd
-          git reset --hard
-          git pull origin ${{ github.event.inputs.branch }}
-        shell: pwsh
-
-      - name: Find Differences and Create ZIP
-        run: |
-          cd /d D:\bancslink_cicd
-          $previousCommit = git rev-parse HEAD~1
-          $diffFiles = git diff --name-only $previousCommit HEAD
-          $zipPath = "D:\bancslink_cicd\latestdiff.zip"
-
-          if ($diffFiles) {
-              Write-Output "Changes detected, creating ZIP..."
-              $tempDiffFolder = "D:\temp_diff"
-              Remove-Item -Recurse -Force $tempDiffFolder -ErrorAction SilentlyContinue
-              New-Item -ItemType Directory -Path $tempDiffFolder -Force | Out-Null
-              
-              foreach ($file in $diffFiles) {
-                  $destPath = "$tempDiffFolder\$file"
-                  New-Item -ItemType Directory -Path (Split-Path $destPath) -Force | Out-Null
-                  Copy-Item -Path "D:\bancslink_cicd\$file" -Destination $destPath -Force
-              }
-
-              Compress-Archive -Path "$tempDiffFolder\*" -DestinationPath $zipPath -Force
-          } else {
-              Write-Output "No changes detected, skipping ZIP creation."
-          }
-        shell: pwsh
-
-      - name: Unzip to Target Location
-        run: |
-          $zipPath = "D:\bancslink_cicd\latestdiff.zip"
-          $unzipPath = "D:\target_location"
-
-          if (Test-Path $zipPath) {
-              Expand-Archive -Path $zipPath -DestinationPath $unzipPath -Force
-              Write-Output "Unzipped files to target location."
-          } else {
-              Write-Output "No ZIP file found, skipping unzip step."
-          }
-        shell: pwsh
-
-      - name: Force Copy Files to Target Directory
-        run: |
-          $sourcePath = "D:\target_location"
-          $destPath = "D:\existing_target"
-
-          Get-ChildItem -Path $sourcePath -Recurse | ForEach-Object {
-              $targetFile = $_.FullName.Replace($sourcePath, $destPath)
-              $targetDir = Split-Path $targetFile -Parent
-
-              if (!(Test-Path $targetDir)) {
-                  New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-              }
-
-              Copy-Item -Path $_.FullName -Destination $targetFile -Force
-          }
-
-          Write-Output "Files copied successfully to target location."
-        shell: pwsh
+  create-secondrunner-file:
+    runs-on: [self-hosted, EC2AMAZ-9UU0BV5]  # Runs on second machine
+    steps:
+      - name: Create secondrunner.txt
+        run: echo "This file is created on EC2AMAZ-9UU0BV5" > D:\secondrunner.txt
