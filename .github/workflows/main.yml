@@ -21,18 +21,22 @@ jobs:
         run: echo "Running on runner: ${{ runner.name }}"
         shell: pwsh
 
-      - name: Set Working Directory
-        run: cd /d D:\bancslink_cicd
-        shell: pwsh
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0
 
       - name: Pull Latest Changes
         run: |
-          git checkout ${{ github.event.inputs.branch }}
+          cd /d D:\bancslink_cicd
+          git reset --hard
           git pull origin ${{ github.event.inputs.branch }}
         shell: pwsh
 
       - name: Find Differences and Create ZIP
         run: |
+          cd /d D:\bancslink_cicd
           $previousCommit = git rev-parse HEAD~1
           $diffFiles = git diff --name-only $previousCommit HEAD
           $zipPath = "D:\bancslink_cicd\latestdiff.zip"
