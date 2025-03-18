@@ -1,17 +1,25 @@
-name: Create Files on Specific Runners
+name: Select Runner and Create File
 
 on:
-  workflow_dispatch:  # Allows manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: "Select the runner label"
+        required: true
+        default: "EC2AMAZ-5BQ8D0F"
+        type: choice
+        options:
+          - EC2AMAZ-5BQ8D0F
+          - EC2AMAZ-9UU0BV5
 
 jobs:
-  create-runnerone-file:
-    runs-on: [self-hosted, EC2AMAZ-5BQ8D0F]  # Runs on first machine
+  create-file:
+    runs-on: [self-hosted, ${{ inputs.runner_label }}]  # Dynamically assign runner
     steps:
-      - name: Create runnerone.txt
-        run: echo "This file is created on EC2AMAZ-5BQ8D0F" > D:\runnerone.txt
-
-  create-secondrunner-file:
-    runs-on: [self-hosted, EC2AMAZ-9UU0BV5]  # Runs on second machine
-    steps:
-      - name: Create secondrunner.txt
-        run: echo "This file is created on EC2AMAZ-9UU0BV5" > D:\secondrunner.txt
+      - name: Create file based on runner
+        run: |
+          if [ "${{ inputs.runner_label }}" == "EC2AMAZ-5BQ8D0F" ]; then
+            echo "This file is created on EC2AMAZ-5BQ8D0F" > D:\runnerone.txt
+          else
+            echo "This file is created on EC2AMAZ-9UU0BV5" > D:\secondrunner.txt
+          fi
