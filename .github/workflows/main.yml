@@ -7,9 +7,7 @@ on:
         description: "Select the target VM"
         required: true
         type: choice
-        options:
-          - vm1
-          - vm2
+        options: [vm1, vm2]
 
 jobs:
   deploy:
