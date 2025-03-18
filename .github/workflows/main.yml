@@ -8,13 +8,21 @@ on:
         required: true
         default: "main"
         type: choice
-        options: [main, dev]
+        options: 
+          - main
+          - dev
 
 jobs:
   deploy:
-    runs-on: ${{ (inputs.branch == 'main') && 'vm1' || 'vm2' }}
-    
+    runs-on: self-hosted
+    env:
+      TARGET_VM: ${{ github.event.inputs.branch == 'main' && 'vm1' || 'vm2' }}
+
     steps:
+      - name: Print Selected VM
+        run: echo "Deploying on ${{ env.TARGET_VM }}"
+        shell: powershell
+
       - name: Set Working Directory
         run: |
           Set-Location -Path "D:\bancslink_cicd"
@@ -22,8 +30,8 @@ jobs:
 
       - name: Pull Latest Changes
         run: |
-          git checkout ${{ inputs.branch }}
-          git pull origin ${{ inputs.branch }}
+          git checkout ${{ github.event.inputs.branch }}
+          git pull origin ${{ github.event.inputs.branch }}
         shell: powershell
 
       - name: Find Differences and Create ZIP
