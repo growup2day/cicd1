@@ -1,19 +1,26 @@
-name: Deploy Changes to Selected VM
+name: Deploy Changes to Selected Runner
 
 on:
   workflow_dispatch:
     inputs:
-      target_vm:
-        description: "Select the target VM"
+      branch:
+        description: "Branch to deploy (main or dev)"
         required: true
+        default: "main"
         type: choice
-        options: [vm1, vm2]
+        options:
+          - main
+          - dev
 
 jobs:
   deploy:
-    runs-on: [self-hosted, windows, ${{ inputs.target_vm }}]
-    
+    runs-on: ${{ github.event.inputs.branch == 'main' && 'EC2AMAZ-5BQ8D0F' || 'EC2AMAZ-9UU0BV5' }}
+
     steps:
+      - name: Print Selected Runner
+        run: echo "Running on runner: ${{ runner.name }}"
+        shell: powershell
+
       - name: Set Working Directory
         run: |
           Set-Location -Path "D:\bancslink_cicd"
@@ -21,7 +28,8 @@ jobs:
 
       - name: Pull Latest Changes
         run: |
-          git pull origin main
+          git checkout ${{ github.event.inputs.branch }}
+          git pull origin ${{ github.event.inputs.branch }}
         shell: powershell
 
       - name: Find Differences and Create ZIP
