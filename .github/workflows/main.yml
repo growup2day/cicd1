@@ -4,18 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       target_vm:
-        description: "Select the target VM"
+        description: "Enter the target VM (vm1 or vm2)"
         required: true
-        type: choice
-        options:
-          - vm1
-          - vm2
+        default: "vm1"
 
 jobs:
   deploy:
-    runs-on: [self-hosted, windows, ${{ inputs.target_vm }}]
+    runs-on: [self-hosted, windows]
     
     steps:
+      - name: Validate Target VM
+        run: |
+          $allowedVMs = @("vm1", "vm2")
+          if ($allowedVMs -notcontains "${{ inputs.target_vm }}") {
+            Write-Error "Invalid VM name. Allowed values: vm1, vm2"
+            exit 1
+          }
+        shell: powershell
+
       - name: Set Working Directory
         run: |
           Set-Location -Path "D:\bancslink_cicd"
@@ -28,23 +34,16 @@ jobs:
 
       - name: Find Differences and Create ZIP
         run: |
-          $previousCommit = git rev-parse HEAD~1
-          $diffFiles = git diff --name-only $previousCommit HEAD
+          $diffFiles = git diff --name-only HEAD~1
           $zipPath = "D:\bancslink_cicd\latestdiff.zip"
-
+          
           if ($diffFiles) {
-              Write-Output "Changes detected, creating ZIP..."
-              $tempDiffFolder = "D:\temp_diff"
-              Remove-Item -Recurse -Force $tempDiffFolder -ErrorAction SilentlyContinue
-              New-Item -ItemType Directory -Path $tempDiffFolder -Force | Out-Null
-              
               $diffFiles | ForEach-Object {
-                  $destPath = "$tempDiffFolder\$_"
+                  $destPath = "D:\temp_diff\" + $_
                   New-Item -ItemType Directory -Path (Split-Path $destPath) -Force | Out-Null
                   Copy-Item -Path "D:\bancslink_cicd\$_" -Destination $destPath -Force
               }
-
-              Compress-Archive -Path "$tempDiffFolder\*" -DestinationPath $zipPath -Force
+              Compress-Archive -Path "D:\temp_diff\*" -DestinationPath $zipPath -Force
           } else {
               Write-Output "No changes detected, skipping ZIP creation."
           }
@@ -52,32 +51,18 @@ jobs:
 
       - name: Unzip to Target Location
         run: |
-          $zipPath = "D:\bancslink_cicd\latestdiff.zip"
           $unzipPath = "D:\target_location"
-
-          if (Test-Path $zipPath) {
-              Expand-Archive -Path $zipPath -DestinationPath $unzipPath -Force
-              Write-Output "Unzipped files to target location."
-          } else {
-              Write-Output "No ZIP file found, skipping unzip step."
-          }
+          Expand-Archive -Path "D:\bancslink_cicd\latestdiff.zip" -DestinationPath $unzipPath -Force
         shell: powershell
 
       - name: Force Copy Files to Target Directory
         run: |
-          $sourcePath = "D:\target_location"
-          $destPath = "D:\existing_target"
-
-          Get-ChildItem -Path $sourcePath -Recurse | ForEach-Object {
-              $targetFile = $_.FullName.Replace($sourcePath, $destPath)
+          Get-ChildItem -Path "D:\target_location" -Recurse | ForEach-Object {
+              $targetFile = $_.FullName.Replace("D:\target_location", "D:\existing_target")
               $targetDir = Split-Path $targetFile -Parent
-
               if (!(Test-Path $targetDir)) {
                   New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
               }
-
               Copy-Item -Path $_.FullName -Destination $targetFile -Force
           }
-
-          Write-Output "Files copied successfully to target location."
         shell: powershell
