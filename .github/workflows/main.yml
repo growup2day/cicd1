@@ -1,4 +1,4 @@
-name: Deploy Changes to Selected VM
+name: Deploy Changes to Selected Runner
 
 on:
   workflow_dispatch:
@@ -8,19 +8,17 @@ on:
         required: true
         default: "main"
         type: choice
-        options: 
+        options:
           - main
           - dev
 
 jobs:
   deploy:
-    runs-on: self-hosted
-    env:
-      TARGET_VM: ${{ github.event.inputs.branch == 'main' && 'vm1' || 'vm2' }}
+    runs-on: ${{ github.event.inputs.branch == 'main' && 'EC2AMAZ-5BQ8D0F' || 'EC2AMAZ-9UU0BV5' }}
 
     steps:
-      - name: Print Selected VM
-        run: echo "Deploying on ${{ env.TARGET_VM }}"
+      - name: Print Selected Runner
+        run: echo "Running on runner: ${{ runner.name }}"
         shell: powershell
 
       - name: Set Working Directory
