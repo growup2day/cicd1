@@ -28,16 +28,23 @@ jobs:
 
       - name: Find Differences and Create ZIP
         run: |
-          $diffFiles = git diff --name-only HEAD~1
+          $previousCommit = git rev-parse HEAD~1
+          $diffFiles = git diff --name-only $previousCommit HEAD
           $zipPath = "D:\bancslink_cicd\latestdiff.zip"
-          
+
           if ($diffFiles) {
+              Write-Output "Changes detected, creating ZIP..."
+              $tempDiffFolder = "D:\temp_diff"
+              Remove-Item -Recurse -Force $tempDiffFolder -ErrorAction SilentlyContinue
+              New-Item -ItemType Directory -Path $tempDiffFolder -Force | Out-Null
+              
               $diffFiles | ForEach-Object {
-                  $destPath = "D:\temp_diff\" + $_
+                  $destPath = "$tempDiffFolder\$_"
                   New-Item -ItemType Directory -Path (Split-Path $destPath) -Force | Out-Null
                   Copy-Item -Path "D:\bancslink_cicd\$_" -Destination $destPath -Force
               }
-              Compress-Archive -Path "D:\temp_diff\*" -DestinationPath $zipPath -Force
+
+              Compress-Archive -Path "$tempDiffFolder\*" -DestinationPath $zipPath -Force
           } else {
               Write-Output "No changes detected, skipping ZIP creation."
           }
@@ -45,18 +52,32 @@ jobs:
 
       - name: Unzip to Target Location
         run: |
+          $zipPath = "D:\bancslink_cicd\latestdiff.zip"
           $unzipPath = "D:\target_location"
-          Expand-Archive -Path "D:\bancslink_cicd\latestdiff.zip" -DestinationPath $unzipPath -Force
+
+          if (Test-Path $zipPath) {
+              Expand-Archive -Path $zipPath -DestinationPath $unzipPath -Force
+              Write-Output "Unzipped files to target location."
+          } else {
+              Write-Output "No ZIP file found, skipping unzip step."
+          }
         shell: powershell
 
       - name: Force Copy Files to Target Directory
         run: |
-          Get-ChildItem -Path "D:\target_location" -Recurse | ForEach-Object {
-              $targetFile = $_.FullName.Replace("D:\target_location", "D:\existing_target")
+          $sourcePath = "D:\target_location"
+          $destPath = "D:\existing_target"
+
+          Get-ChildItem -Path $sourcePath -Recurse | ForEach-Object {
+              $targetFile = $_.FullName.Replace($sourcePath, $destPath)
               $targetDir = Split-Path $targetFile -Parent
+
               if (!(Test-Path $targetDir)) {
                   New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
               }
+
               Copy-Item -Path $_.FullName -Destination $targetFile -Force
           }
+
+          Write-Output "Files copied successfully to target location."
         shell: powershell
