@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Branch to deploy (main or dev)"
+        description: "Select Branch to Deploy"
         required: true
         default: "main"
         type: choice
